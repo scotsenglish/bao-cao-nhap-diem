@@ -311,12 +311,10 @@ async function main() {
                 Level: c.clevel_name ?? "",
                 Syllabus: c.syl_name ?? "",
                 Class: className,
-                StartDate: c.cls_startdate ?? "",
                 bsem_id: bsemId,
                 brch_id: branch.brch_id
               };
               if (!classPlanMap.has(key)) classPlanMap.set(key, planRow);
-              else if (!classPlanMap.get(key).StartDate && planRow.StartDate) classPlanMap.set(key, planRow);
             }
 
             const programs = await post("CounStudentClassProgram", { counn: { coun_bsem_id: bsemId } });
@@ -351,8 +349,7 @@ async function main() {
                     syl_id: sylId,
                     cls_id: clsId,
                     Program: plan?.Program || programName,
-                    Syllabus: plan?.Syllabus || sylName,
-                    StartDate: plan?.StartDate ?? ""
+                    Syllabus: plan?.Syllabus || sylName
                   });
                 }
               }
@@ -380,6 +377,26 @@ async function main() {
   let dedupKeysArr = isResuming ? prevState.dedupKeys || [] : [];
   const totalClassesInCycle = isResuming ? prevState.totalClassesInCycle : classesForCycle.length;
   const cycleStartedAt = isResuming ? prevState.cycleStartedAt : new Date().toISOString();
+
+  // Checkpoint LIÊN TỤC trong lúc cào (không chỉ khi hết giờ hoặc xong hẳn),
+  // để job bị GitHub kill đột ngột bất cứ lúc nào cũng không mất tiến độ, và
+  // lần chạy sau tiếp tục đúng chỗ thay vì cào lại từ đầu.
+  await context.exposeFunction("__checkpointCL", (snapshot) => {
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        status: "in_progress",
+        cycleStartedAt,
+        totalClassesInCycle,
+        remainingClasses: classesForCycle.slice(snapshot.done),
+        studentSummary: snapshot.studentSummary,
+        classSummary: snapshot.classSummary,
+        dedupKeys: snapshot.dedupKeys
+      }, null, 2)
+    );
+    console.log(`[Checkpoint] Đã lưu tạm ${snapshot.done}/${snapshot.total} lớp.`);
+    gitCheckpointCommit(`Checkpoint c-Learning: ${snapshot.done}/${snapshot.total} lớp`);
+  });
 
   // ================= BƯỚC 2: Cào điểm Homework / Book Test / Lesson Quiz =================
   const deadline = Date.now() + TIME_BUDGET_MS;
@@ -567,6 +584,12 @@ async function main() {
           done++;
           if (done % 10 === 0 || done === classes.length) {
             console.log(`Đã xử lý ${done}/${classes.length} lớp | Lỗi: ${errors.length}`);
+          }
+          if (done % CHECKPOINT_EVERY === 0 || done === classes.length) {
+            await window.__checkpointCL({
+              studentSummary, classSummary, dedupKeys: [...dedupKeys],
+              done, total: classes.length
+            });
           }
         }
 
