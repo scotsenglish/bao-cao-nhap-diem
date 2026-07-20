@@ -1,0 +1,51 @@
+name: Scrape c-Learning data (real-time)
+
+on:
+  schedule:
+    # Giờ UTC. Việt Nam = UTC+7 -> 23:00 UTC=6h sáng, 05:00 UTC=12h trưa, 11:00 UTC=18h tối
+    - cron: "0 23 * * *"
+    - cron: "0 5 * * *"
+    - cron: "0 11 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm install playwright
+          npx playwright install --with-deps chromium
+
+      - name: Configure git for checkpoint commits
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run scraper
+        env:
+          LMS_LOGIN_ID: ${{ secrets.LMS_LOGIN_ID }}
+          LMS_LOGIN_PASSWORD: ${{ secrets.LMS_LOGIN_PASSWORD }}
+          CLEARNING_APPS_SCRIPT_URL: ${{ secrets.CLEARNING_APPS_SCRIPT_URL }}
+          CLEARNING_APPS_SCRIPT_TOKEN: ${{ secrets.CLEARNING_APPS_SCRIPT_TOKEN }}
+        run: node scripts/scrape-clearning.js
+
+      - name: Upload debug artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-clearning
+          path: debug/
+          if-no-files-found: ignore
