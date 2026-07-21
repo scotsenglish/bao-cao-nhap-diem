@@ -28,9 +28,9 @@ const LOGIN_URL = "https://lms.scotsenglish.edu.vn/login.html";
 const BASE = "https://lms.scotsenglish.edu.vn/data/setup.asmx";
 const STAFF_ID = 9072;
 
-// Mức trần an toàn (phòng dữ liệu Journal bị lỗi/nhiễu cho ra số Lecture bất
-// thường). Số tuần thực tế để cào điểm được xác định từ NGÀY THẬT của
-// CounClassInfoJournalList, không còn tính theo Start Date + lịch nữa.
+// Mức trần an toàn cho số Lecture (phòng dữ liệu bất thường). Danh sách
+// Lecture thực tế của mỗi lớp lấy qua CounRptLectureList — y hệt cơ chế
+// i-Learning — nên không cần tính "Tuần"/week_id gì nữa.
 const MAX_WEEK = 30;
 
 // Chi nhánh -> brch_id. Khi mở chi nhánh mới, thêm 1 dòng vào đây.
@@ -285,18 +285,18 @@ async function main() {
         const seenCache = new Set();
         let stoppedEarly = false;
 
-        for (const branch of BRANCHES) {
+        async function processBranch(branch) {
           if (Date.now() >= deadline) {
             stoppedEarly = true;
             errorRows.push({ Branch: branch.brch_name, Step: "Deadline", Error: "Chưa xử lý do hết thời gian" });
-            continue;
+            return;
           }
           try {
             const semesters = await post("CounSemester", { staff: { stf_id: STAFF_ID }, setup: { hr_brch_id: branch.brch_id } });
             const bsemId = semesters?.[0]?.bsem_id;
             if (!bsemId) {
               errorRows.push({ Branch: branch.brch_name, Step: "CounSemester", Error: "No bsem_id" });
-              continue;
+              return;
             }
 
             const statClasses = await post("reportStaticsClassList", { ret: { rt_brch_id: branch.brch_id, rt_bsem_id: bsemId, rt_cors_id: 0, rt_syl_id: 0 } });
@@ -358,6 +358,16 @@ async function main() {
             errorRows.push({ Branch: branch.brch_name, Step: "Branch Loop", Error: String(err?.message ?? err) });
           }
         }
+
+        const BRANCH_CONCURRENCY = 6;
+        let branchIndex = 0;
+        await Promise.all(
+          Array.from({ length: BRANCH_CONCURRENCY }, async () => {
+            while (branchIndex < BRANCHES.length) {
+              await processBranch(BRANCHES[branchIndex++]);
+            }
+          })
+        );
         return { cacheRows, errorRows, stoppedEarly };
       },
       { BASE, STAFF_ID, BRANCHES, deadline: Date.now() + CACHE_BUILD_BUDGET_MS }
@@ -368,13 +378,14 @@ async function main() {
 
     fs.writeFileSync(
       statePath,
-      JSON.stringify({ status: "in_progress", cycleStartedAt: new Date().toISOString(), totalClassesInCycle: classesForCycle.length, remainingClasses: classesForCycle, studentSummary: {}, classSummary: {}, dedupKeys: [] }, null, 2)
+      JSON.stringify({ status: "in_progress", cycleStartedAt: new Date().toISOString(), totalClassesInCycle: classesForCycle.length, remainingClasses: classesForCycle, studentSummary: {}, classSummary: {}, dedupKeys: [], rawByClass: {} }, null, 2)
     );
   }
 
   let studentSummary = isResuming ? prevState.studentSummary || {} : {};
   let classSummary = isResuming ? prevState.classSummary || {} : {};
   let dedupKeysArr = isResuming ? prevState.dedupKeys || [] : [];
+  let rawByClassData = isResuming ? prevState.rawByClass || {} : {};
   const totalClassesInCycle = isResuming ? prevState.totalClassesInCycle : classesForCycle.length;
   const cycleStartedAt = isResuming ? prevState.cycleStartedAt : new Date().toISOString();
 
@@ -391,7 +402,8 @@ async function main() {
         remainingClasses: classesForCycle.slice(snapshot.done),
         studentSummary: snapshot.studentSummary,
         classSummary: snapshot.classSummary,
-        dedupKeys: snapshot.dedupKeys
+        dedupKeys: snapshot.dedupKeys,
+        rawByClass: snapshot.rawByClass
       }, null, 2)
     );
     console.log(`[Checkpoint] Đã lưu tạm ${snapshot.done}/${snapshot.total} lớp.`);
@@ -402,14 +414,12 @@ async function main() {
   const deadline = Date.now() + TIME_BUDGET_MS;
   console.log(`== Đang cào điểm c-Learning (giới hạn nội bộ ${TIME_BUDGET_MS / 60000} phút) ==`);
 
-  const reportDateIso = new Date().toISOString().slice(0, 10);
-
   let step2;
   try {
     step2 = await page.evaluate(
-      async ({ BASE, classes, MAX_WEEK, reportDateIso, deadline, prevStudentSummary, prevClassSummary, prevDedupKeys }) => {
-        const CONCURRENCY = 3;
-        const REQUEST_DELAY_MS = 150;
+      async ({ BASE, classes, MAX_WEEK, deadline, prevStudentSummary, prevClassSummary, prevDedupKeys, prevRawByClass }) => {
+        const CONCURRENCY = 6;
+        const REQUEST_DELAY_MS = 30;
         const CHECKPOINT_EVERY = 50;
         const sleep = ms => new Promise(r => setTimeout(r, ms));
         const evalMap = { "Homework Completion": "Homework", "Book Test": "Book Test", "Lesson Quiz": "Lesson Quiz" };
@@ -448,36 +458,10 @@ async function main() {
           }
         }
 
-        // Dùng dữ liệu THẬT từ CounClassInfoJournalList (ngày thực tế đã diễn ra
-        // của từng Lecture) thay vì ước tính theo lịch (Start Date + số ngày),
-        // vì lớp có thể học bù/nghỉ/lệch lịch so với kế hoạch ban đầu.
-        const reportDate = new Date(reportDateIso);
-        const parseJournalDate = raw => {
-          const m = String(raw ?? "").match(/^(\d{4}-\d{2}-\d{2})/);
-          return m ? new Date(m[1]) : null;
-        };
-        const journalCache = new Map(); // tránh gọi lại nếu 1 job được xử lý lại (resume)
-        async function getActualWeek(job) {
-          if (journalCache.has(job.cls_id)) return journalCache.get(job.cls_id);
-          let maxLecture = 0;
-          try {
-            const rows = await post("CounClassInfoJournalList", { counn: { coun_cls_id: job.cls_id } });
-            for (const r of rows) {
-              const lectureNo = Number(String(r.Lecture ?? "").match(/\d+/)?.[0]) || 0;
-              const d = parseJournalDate(r.Date);
-              // Chỉ tính lecture đã THỰC SỰ diễn ra (ngày <= hôm nay), không tính
-              // các buổi đã lên lịch sẵn nhưng chưa tới (Att/Abs = 0, Taught = null)
-              if (lectureNo > 0 && d && d <= reportDate && lectureNo > maxLecture) maxLecture = lectureNo;
-            }
-          } catch (err) {
-            // Nếu lỗi (lớp mới, chưa có Journal...) coi như chưa học buổi nào,
-            // để không cào nhầm dữ liệu tuần chưa diễn ra
-            maxLecture = 0;
-          }
-          const result = Math.min(maxLecture, MAX_WEEK);
-          journalCache.set(job.cls_id, result);
-          return result;
-        }
+        // Y hệt cơ chế i-Learning: lấy danh sách Lecture THẬT của lớp qua
+        // CounRptLectureList (chỉ trả về lecture đã thực sự được tạo trên LMS,
+        // không có lecture tương lai), rồi lấy điểm theo từng Lecture qua
+        // rt_ssect_id — không còn khái niệm "Tuần"/week_id nào nữa.
         const safeNumber = v => {
           const n = Number(v);
           return v === null || v === undefined || v === "" || Number.isNaN(n) ? null : n;
@@ -487,6 +471,7 @@ async function main() {
         const studentSummary = prevStudentSummary || {};
         const classSummary = prevClassSummary || {};
         const dedupKeys = new Set(prevDedupKeys || []);
+        const rawByClass = prevRawByClass || {};
         const errors = [];
 
         function addStudentSummary({ branch, program, syllabus, className, studentId, studentName, evaluation, score }) {
@@ -507,14 +492,14 @@ async function main() {
           }
         }
 
-        function addClassSummary({ branch, program, syllabus, className, weekNo, evaluation, score }) {
+        function addClassSummary({ branch, program, syllabus, className, lectureNo, evaluation, score }) {
           const label = evalMap[evaluation];
           if (!label) return;
           const key = [branch, program, syllabus, className].join("||");
           if (!classSummary[key]) {
             classSummary[key] = { Branch: branch, Program: program, Syllabus: syllabus, Class: className, UpToWeek: 0, evaluations: {} };
           }
-          classSummary[key].UpToWeek = Math.max(classSummary[key].UpToWeek || 0, weekNo);
+          classSummary[key].UpToWeek = Math.max(classSummary[key].UpToWeek || 0, lectureNo);
           if (!classSummary[key].evaluations[label]) classSummary[key].evaluations[label] = initBucket();
           const bucket = classSummary[key].evaluations[label];
           bucket.total++;
@@ -526,60 +511,73 @@ async function main() {
           }
         }
 
-        // Lấy danh sách tuần (week_id) cho mỗi bsem_id, dùng chung cho các lớp cùng học kỳ
-        const uniqueBsemIds = [...new Set(classes.map(j => j.bsem_id))];
-        const weekMapByBsem = new Map();
-        for (const bsemId of uniqueBsemIds) {
-          const weeksAll = await post("ReportCommonWeek", { ret: { rt_bsem_id: bsemId } });
-          const weekMap = new Map();
-          for (const w of weeksAll) {
-            const weekNo = Number(String(w.week_name || "").match(/\d+/)?.[0]);
-            if (weekNo >= 1 && weekNo <= MAX_WEEK && !weekMap.has(weekNo)) weekMap.set(weekNo, w);
-          }
-          weekMapByBsem.set(bsemId, weekMap);
-        }
-
         let done = 0;
 
         async function processClass(job) {
-          const expWeek = await getActualWeek(job);
-          for (let weekNo = 1; weekNo <= expWeek; weekNo++) {
-            const week = weekMapByBsem.get(job.bsem_id)?.get(weekNo);
-            if (!week) continue;
-            try {
-              const gradeRows = await post("ReportGrdWeekliGradeList", {
-                ret: {
-                  rt_brch_id: job.brch_id, rt_bsem_id: job.bsem_id, rt_cors_id: job.cors_id,
-                  rt_syl_id: job.syl_id, rt_cls_id: job.cls_id, rt_week_id: week.week_id,
-                  rt_learn_type: "c-Learning", rt_preview: 0, rt_review: 0, rt_skill: 0, rt_notgrade: 0
-                }
-              });
+          try {
+            const lectureRows = await post("CounRptLectureList", { counn: { cls_id: job.cls_id } });
+            const lectures = lectureRows
+              .map(x => ({
+                id: Number(x.ssect_id),
+                order: Number(x.ssect_order) || Number(String(x.ssect_name ?? "").match(/\d+/)?.[0]) || 0
+              }))
+              .filter(x => x.id && x.order >= 1 && x.order <= MAX_WEEK)
+              .sort((a, b) => a.order - b.order);
 
-              gradeRows.forEach(r => {
-                const program = r.top_cors_name ?? job.Program ?? "";
-                const className = r.cls_name ?? job.Class ?? "";
-                const score = r.score ?? "";
-                const evaluation = r.esdtl_type ?? "";
-                const studentId = r.cstd_id ?? r.cstd_id1 ?? r.std_id ?? "";
-                const studentName = r.std_name ?? "";
-                const label = evalMap[evaluation];
-                if (!label) return;
+            for (const lecture of lectures) {
+              try {
+                const gradeRows = await post("ReportGrdWeekliGradeList", {
+                  ret: {
+                    rt_brch_id: job.brch_id, rt_bsem_id: job.bsem_id, rt_cors_id: job.cors_id,
+                    rt_syl_id: job.syl_id, rt_cls_id: job.cls_id, rt_ssect_id: lecture.id,
+                    rt_learn_type: "c-Learning", rt_preview: 0, rt_review: 0, rt_skill: 0, rt_notgrade: 0
+                  }
+                });
 
-                let shouldCount = true;
-                if (label === "Homework") {
-                  const dedupKey = [job.Branch, className, weekNo, studentId || studentName, label].join("||");
-                  if (dedupKeys.has(dedupKey)) shouldCount = false;
-                  else dedupKeys.add(dedupKey);
-                }
-                if (shouldCount) {
-                  addStudentSummary({ branch: job.Branch, program, syllabus: job.Syllabus ?? "", className, studentId, studentName, evaluation, score });
-                  addClassSummary({ branch: job.Branch, program, syllabus: job.Syllabus ?? "", className, weekNo, evaluation, score });
-                }
-              });
-            } catch (err) {
-              errors.push({ Branch: job.Branch, Class: job.Class, Week: weekNo, Error: String(err?.message ?? err) });
+                gradeRows.forEach(r => {
+                  const lectureNo = Number(r.ssect_order) || lecture.order;
+                  const program = r.top_cors_name ?? job.Program ?? "";
+                  const className = r.cls_name ?? job.Class ?? "";
+                  const score = r.score ?? "";
+                  const evaluation = r.esdtl_type ?? "";
+                  const studentId = r.cstd_id ?? r.cstd_id1 ?? r.std_id ?? "";
+                  const studentName = r.std_name ?? "";
+                  const label = evalMap[evaluation];
+                  if (!label) return;
+
+                  // Lưu điểm thô từng buổi (không phụ thuộc dedup — ghi đè theo key
+                  // là tự khử trùng lặp) để phục vụ tra cứu chi tiết theo lớp/học viên.
+                  const classKey = job.Branch + "||" + className;
+                  if (!rawByClass[classKey]) {
+                    rawByClass[classKey] = { branch: job.Branch, class_name: className, program, syllabus: job.Syllabus ?? "", students: {} };
+                  }
+                  const studentKey = studentId || studentName;
+                  if (!rawByClass[classKey].students[studentKey]) {
+                    rawByClass[classKey].students[studentKey] = { student_id: studentId, name: studentName, lectures: {} };
+                  }
+                  if (!rawByClass[classKey].students[studentKey].lectures[lectureNo]) {
+                    rawByClass[classKey].students[studentKey].lectures[lectureNo] = {};
+                  }
+                  rawByClass[classKey].students[studentKey].lectures[lectureNo][label] = safeNumber(score);
+
+                  let shouldCount = true;
+                  if (label === "Homework") {
+                    const dedupKey = [job.Branch, className, lectureNo, studentId || studentName, label].join("||");
+                    if (dedupKeys.has(dedupKey)) shouldCount = false;
+                    else dedupKeys.add(dedupKey);
+                  }
+                  if (shouldCount) {
+                    addStudentSummary({ branch: job.Branch, program, syllabus: job.Syllabus ?? "", className, studentId, studentName, evaluation, score });
+                    addClassSummary({ branch: job.Branch, program, syllabus: job.Syllabus ?? "", className, lectureNo, evaluation, score });
+                  }
+                });
+              } catch (err) {
+                errors.push({ Branch: job.Branch, Class: job.Class, Lecture: lecture.order, Error: String(err?.message ?? err) });
+              }
+              await sleep(REQUEST_DELAY_MS);
             }
-            await sleep(REQUEST_DELAY_MS);
+          } catch (err) {
+            errors.push({ Branch: job.Branch, Class: job.Class, Error: String(err?.message ?? err) });
           }
           done++;
           if (done % 10 === 0 || done === classes.length) {
@@ -587,7 +585,7 @@ async function main() {
           }
           if (done % CHECKPOINT_EVERY === 0 || done === classes.length) {
             await window.__checkpointCL({
-              studentSummary, classSummary, dedupKeys: [...dedupKeys],
+              studentSummary, classSummary, dedupKeys: [...dedupKeys], rawByClass,
               done, total: classes.length
             });
           }
@@ -601,11 +599,11 @@ async function main() {
         );
 
         return {
-          studentSummary, classSummary, dedupKeys: [...dedupKeys],
+          studentSummary, classSummary, dedupKeys: [...dedupKeys], rawByClass,
           errors, stoppedEarly: index < classes.length, processedIndex: index, totalClasses: classes.length
         };
       },
-      { BASE, classes: classesForCycle, MAX_WEEK, reportDateIso, deadline, prevStudentSummary: studentSummary, prevClassSummary: classSummary, prevDedupKeys: dedupKeysArr }
+      { BASE, classes: classesForCycle, MAX_WEEK, deadline, prevStudentSummary: studentSummary, prevClassSummary: classSummary, prevDedupKeys: dedupKeysArr, prevRawByClass: rawByClassData }
     );
   } catch (err) {
     console.log("== Bước cào điểm bị gián đoạn giữa chừng ==");
@@ -617,6 +615,7 @@ async function main() {
   studentSummary = step2.studentSummary;
   classSummary = step2.classSummary;
   dedupKeysArr = step2.dedupKeys;
+  rawByClassData = step2.rawByClass;
 
   console.log(`Đã xử lý ${step2.processedIndex}/${step2.totalClasses} lớp trong lần chạy này. Lỗi: ${step2.errors.length}`);
 
@@ -625,7 +624,7 @@ async function main() {
     console.log(`== Hết thời gian nội bộ — còn ${remaining.length} lớp sẽ được lần chạy kế tiếp tiếp tục ==`);
     fs.writeFileSync(
       statePath,
-      JSON.stringify({ status: "in_progress", cycleStartedAt, totalClassesInCycle, remainingClasses: remaining, studentSummary, classSummary, dedupKeys: dedupKeysArr }, null, 2)
+      JSON.stringify({ status: "in_progress", cycleStartedAt, totalClassesInCycle, remainingClasses: remaining, studentSummary, classSummary, dedupKeys: dedupKeysArr, rawByClass: rawByClassData }, null, 2)
     );
     gitCheckpointCommit(`Checkpoint c-Learning: ${step2.processedIndex}/${step2.totalClasses} lớp`);
     await browser.close();
@@ -667,15 +666,25 @@ async function main() {
   const classRows = buildRows(classSummary, false);
   const studentRows = buildRows(studentSummary, true);
 
-  // Gán "week" cho từng học viên theo lớp (để đồng bộ với dashboard)
+  // Gán "week" (số Lecture cao nhất) cho từng học viên theo lớp (để đồng bộ với dashboard)
   const weekLookup = {};
   classRows.forEach(c => { weekLookup[c.branch + "|" + c.class_name] = c.week; });
   studentRows.forEach(s => { s.week = weekLookup[s.branch + "|" + s.class_name]; });
 
-  console.log(`Tổng hợp xong: ${classRows.length} lớp, ${studentRows.length} học viên. Đang đẩy lên Apps Script...`);
+  // Dữ liệu điểm THÔ từng buổi (Lecture), 1 dòng/lớp, dùng cho tab Tra cứu chi
+  // tiết theo lớp — KHÔNG dùng cho bảng tổng hợp (classRows/studentRows ở trên).
+  const rawRows = Object.values(rawByClassData).map(c => ({
+    branch: c.branch,
+    class_name: c.class_name,
+    program: c.program,
+    syllabus: c.syllabus,
+    students: Object.values(c.students)
+  }));
+
+  console.log(`Tổng hợp xong: ${classRows.length} lớp, ${studentRows.length} học viên, ${rawRows.length} lớp có dữ liệu chi tiết từng buổi. Đang đẩy lên Apps Script...`);
 
   try {
-    const res = await postJson(appsScriptUrl, { token: appsScriptToken, classRows, studentRows });
+    const res = await postJson(appsScriptUrl, { token: appsScriptToken, classRows, studentRows, rawRows });
     console.log("Kết quả đẩy dữ liệu:", res.status, res.body.slice(0, 300));
   } catch (err) {
     console.log("[LỖI] Không đẩy được dữ liệu lên Apps Script:", String(err?.message ?? err));
