@@ -90,6 +90,40 @@
   .row-count{font-size:12px;color:var(--text-secondary);}
   .export-btn{padding:7px 12px;border-radius:6px;border:1px solid var(--done);background:#eafaf0;color:#1e5c2a;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;}
   .export-btn:hover{background:#d8f3e2;}
+
+  .lookup-panel{background:var(--bg-card);border-radius:var(--radius);padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:var(--gap);}
+  .lookup-row{display:flex;gap:16px;flex-wrap:wrap;align-items:end;}
+  .lookup-input{padding:9px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;min-width:260px;}
+  .reset-btn-light{align-self:end;padding:9px 16px;border-radius:6px;border:1px solid var(--border);background:#f8f9fa;color:var(--text-secondary);font-size:12.5px;font-weight:600;cursor:pointer;}
+  .reset-btn-light:hover{background:#eef0f3;}
+  .lookup-hint{font-size:12px;color:var(--text-secondary);margin-top:12px;}
+
+  .lookup-empty{background:var(--bg-card);border-radius:var(--radius);padding:40px 20px;text-align:center;color:var(--text-secondary);font-size:13.5px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+  .lookup-toomany{font-size:12px;color:var(--text-secondary);margin-bottom:10px;}
+  .lookup-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;}
+  .lookup-card{background:var(--bg-card);border-radius:var(--radius);padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid #cbd5e1;}
+  .lookup-card-name{font-size:15px;font-weight:700;margin-bottom:2px;}
+  .lookup-card-sub{font-size:12px;color:var(--text-secondary);margin-bottom:12px;}
+  .lookup-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;}
+  .lookup-metric{text-align:center;background:#f8f9fa;border-radius:8px;padding:8px 4px;}
+  .lookup-metric-label{font-size:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.3px;}
+  .lookup-metric-value{font-size:16px;font-weight:700;margin-top:2px;}
+  .lookup-metric-avg{font-size:11px;color:var(--text-secondary);margin-top:1px;}
+
+  .lookup-detail-trigger{margin:16px 0;text-align:center;}
+  .detail-grid-title{font-size:12.5px;color:var(--text-secondary);margin-bottom:10px;}
+  .detail-grid-scroll{background:var(--bg-card);border-radius:var(--radius);box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:auto;max-height:600px;}
+  table.detail-grid-table{border-collapse:collapse;font-size:11.5px;white-space:nowrap;}
+  .detail-grid-table th, .detail-grid-table td{padding:5px 8px;text-align:center;border-bottom:1px solid #f0f0f0;border-right:1px solid #f5f5f5;}
+  .detail-grid-table thead th{position:sticky;top:0;background:#f8f9fa;color:var(--text-secondary);font-weight:700;font-size:10.5px;text-transform:uppercase;z-index:2;}
+  .dg-sticky{position:sticky;left:0;background:#fff;z-index:1;text-align:left;font-weight:600;min-width:140px;}
+  .dg-sticky2{position:sticky;left:140px;background:#fff;z-index:1;color:var(--text-secondary);font-size:10.5px;min-width:44px;}
+  thead .dg-sticky{z-index:3;}
+  thead .dg-sticky2{z-index:3;}
+  .dg-id{font-size:10px;color:var(--text-secondary);font-weight:400;}
+  .dg-act{text-align:left;}
+  .dg-has{font-weight:600;color:#1a1f2b;}
+  .dg-missing{color:#c7cbd1;}
   table.data-table{width:100%;border-collapse:collapse;font-size:12px;}
   .data-table thead th{text-align:left;padding:9px 8px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;white-space:nowrap;}
   .data-table thead th:hover{background:#f8f9fa;}
@@ -149,7 +183,7 @@
       <div class="filter-group"><label>Program</label><div class="multiselect" id="ms-program"></div></div>
       <div class="filter-group"><label>Syllabus</label><div class="multiselect" id="ms-syllabus"></div></div>
       <div class="filter-group"><label>Lớp</label><div class="multiselect" id="ms-class_name"></div></div>
-      <div class="filter-group"><label>Tuần</label><div class="multiselect" id="ms-week"></div></div>
+      <div class="filter-group"><label>Lecture</label><div class="multiselect" id="ms-week"></div></div>
       <button class="reset-btn" id="reset-filters">↺ Xoá lọc</button>
       <label class="upload-btn" for="file-upload">📂 Tải file export mới (.xlsx)</label>
       <input type="file" id="file-upload" accept=".xlsx" style="display:none;">
@@ -160,6 +194,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="classes">📚 Theo Lớp</button>
     <button class="tab-btn" data-tab="students">🧑‍🎓 Theo Học viên</button>
+    <button class="tab-btn" data-tab="tracuu">🔍 Tra cứu</button>
   </div>
 
   <!-- ============ TAB: CLASSES ============ -->
@@ -223,7 +258,7 @@
       <table class="data-table" id="c-table">
         <thead><tr>
           <th data-key="region">Vùng</th><th data-key="branch">Chi nhánh</th><th data-key="program">Program</th>
-          <th data-key="syllabus">Syllabus</th><th data-key="class_name">Lớp</th><th data-key="week">Tuần</th>
+          <th data-key="syllabus">Syllabus</th><th data-key="class_name">Lớp</th><th data-key="week">Lecture</th>
           <th data-key="hw_rate">HW %</th><th data-key="hw_avg">HW Điểm TB</th>
           <th data-key="bt_rate">Test %</th><th data-key="bt_avg">Test Điểm TB</th>
           <th data-key="lq_rate">Quiz %</th><th data-key="lq_avg">Quiz Điểm TB</th>
@@ -280,6 +315,26 @@
     </section>
   </div>
 
+  <!-- ============ TAB: TRA CỨU ============ -->
+  <div id="tab-tracuu" class="hidden">
+    <section class="lookup-panel">
+      <div class="lookup-row">
+        <div class="filter-group">
+          <label>Nhập mã lớp trực tiếp</label>
+          <input type="text" class="lookup-input" id="lk-class-code" placeholder="VD: AKH_26_OFF_CKENG_CKENGLISH2_424">
+        </div>
+        <div class="filter-group">
+          <label>Tìm theo tên hoặc mã học viên</label>
+          <input type="text" class="lookup-input" id="lk-student-search" placeholder="VD: Minh Trí">
+        </div>
+        <button type="button" class="reset-btn-light" id="lk-reset">↺ Xoá tra cứu</button>
+      </div>
+      <div class="lookup-hint">Bộ lọc Vùng / Chi nhánh / Program / Syllabus / Lớp / Lecture ở trên đầu trang cũng áp dụng cho tab này. Nhập ít nhất 1 trong 2 ô trên để xem kết quả.</div>
+    </section>
+
+    <section id="lookup-results"></section>
+  </div>
+
   <footer class="dashboard-footer">
     Cập nhật lần đầu: <span id="data-date"></span> &nbsp;•&nbsp; Dùng nút "Tải file export mới" mỗi tháng để cập nhật số liệu
   </footer>
@@ -292,7 +347,7 @@ const CLASS_DATA = [];
 const STUDENT_DATA = [];
 
 // !! DÁN URL WEB APP CỦA BẠN VÀO ĐÂY (xem Code.gs / hướng dẫn thiết lập) !!
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbymm2QfCtYHZtNVMfG_rEYpWKa_xJtbZdBivm0Jc2IJdyXaUL3688VbjTbALvOn030WEA/exec";
+const APPS_SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE";
 
 
 // Chi nhánh -> Vùng. Nếu mở chi nhánh mới, thêm 1 dòng vào đây theo đúng định dạng.
@@ -450,6 +505,7 @@ class Dashboard{
     this.setupFilters();
     this.setupTableEvents();
     this.setupUpload();
+    this.setupLookup();
     this.render();
   }
 
@@ -471,6 +527,7 @@ class Dashboard{
         this.activeTab = btn.dataset.tab;
         document.getElementById('tab-classes').classList.toggle('hidden', this.activeTab !== 'classes');
         document.getElementById('tab-students').classList.toggle('hidden', this.activeTab !== 'students');
+        document.getElementById('tab-tracuu').classList.toggle('hidden', this.activeTab !== 'tracuu');
         this.render();
       });
     });
@@ -582,7 +639,7 @@ class Dashboard{
   }
 
   setupFilters(){
-    const labels = { region:'Vùng', branch:'Chi nhánh', program:'Program', syllabus:'Syllabus', class_name:'Lớp', week:'Tuần' };
+    const labels = { region:'Vùng', branch:'Chi nhánh', program:'Program', syllabus:'Syllabus', class_name:'Lớp', week:'Lecture' };
     this.filters = {};
     Dashboard.FILTER_DIMS.forEach(dim => { this.filters[dim] = new Set(); });
 
@@ -643,8 +700,10 @@ class Dashboard{
   render(){
     if (this.activeTab === 'classes'){
       this.renderClassKPIs(); this.renderClassCharts(); this.renderHeatmap(); this.renderClassTable();
-    } else {
+    } else if (this.activeTab === 'students'){
       this.renderStudentKPIs(); this.renderStudentTable();
+    } else if (this.activeTab === 'tracuu'){
+      this.renderLookupResults();
     }
   }
 
@@ -814,6 +873,176 @@ class Dashboard{
     document.getElementById('s-kpi-lq-avg').textContent = lqAvg===null ? '–' : lqAvg.toFixed(2);
   }
 
+  setupLookup(){
+    this.lkClassCode = '';
+    this.lkStudentSearch = '';
+    document.getElementById('lk-class-code').addEventListener('input', e => {
+      this.lkClassCode = e.target.value.trim().toLowerCase();
+      this.renderLookupResults();
+    });
+    document.getElementById('lk-student-search').addEventListener('input', e => {
+      this.lkStudentSearch = e.target.value.trim().toLowerCase();
+      this.renderLookupResults();
+    });
+    document.getElementById('lk-reset').addEventListener('click', () => {
+      this.lkClassCode = '';
+      this.lkStudentSearch = '';
+      document.getElementById('lk-class-code').value = '';
+      document.getElementById('lk-student-search').value = '';
+      this.renderLookupResults();
+    });
+  }
+
+  renderLookupResults(){
+    const wrap = document.getElementById('lookup-results');
+    if (!this.lkClassCode && !this.lkStudentSearch){
+      wrap.innerHTML = `<div class="lookup-empty">Nhập mã lớp hoặc tên/mã học viên ở trên để xem kết quả tra cứu.</div>`;
+      return;
+    }
+
+    let data = this.getFilteredStudents();
+    if (this.lkClassCode) data = data.filter(d => String(d.class_name).toLowerCase().includes(this.lkClassCode));
+    if (this.lkStudentSearch) data = data.filter(d => {
+      const hay = [d.name, d.student_id].join(' ').toLowerCase();
+      return hay.includes(this.lkStudentSearch);
+    });
+
+    if (!data.length){
+      wrap.innerHTML = `<div class="lookup-empty">Không tìm thấy học viên phù hợp. Kiểm tra lại mã lớp / tên hoặc bộ lọc Vùng-Chi nhánh-Program-Syllabus-Lớp-Lecture ở đầu trang.</div>`;
+      return;
+    }
+
+    const MAX_CARDS = 60;
+    const shown = data.slice(0, MAX_CARDS);
+    let html = '';
+    if (data.length > MAX_CARDS){
+      html += `<div class="lookup-toomany">Tìm thấy ${data.length.toLocaleString('vi-VN')} kết quả — chỉ hiển thị ${MAX_CARDS} đầu tiên. Thu hẹp thêm bằng bộ lọc hoặc từ khoá cụ thể hơn.</div>`;
+    }
+    html += '<div class="lookup-cards">' + shown.map(d => `
+      <div class="lookup-card" style="border-left-color:${rateColor(d.composite)}">
+        <div class="lookup-card-name">${d.name || '(chưa có tên)'}</div>
+        <div class="lookup-card-sub">${d.student_id ? 'Mã HV: ' + d.student_id + ' • ' : ''}${d.branch} • ${d.class_name}</div>
+        <div class="lookup-card-sub">${d.region} • ${d.program}${d.week ? ' • Lecture ' + d.week : ''}</div>
+        <div class="lookup-card-grid">
+          <div class="lookup-metric">
+            <div class="lookup-metric-label">Homework</div>
+            <div class="lookup-metric-value">${d.hw_rate.toFixed(0)}%</div>
+            <div class="lookup-metric-avg">TB: ${this.fmtAvg(d.hw_avg)}</div>
+          </div>
+          <div class="lookup-metric">
+            <div class="lookup-metric-label">Book Test</div>
+            <div class="lookup-metric-value">${d.bt_rate.toFixed(0)}%</div>
+            <div class="lookup-metric-avg">TB: ${this.fmtAvg(d.bt_avg)}</div>
+          </div>
+          <div class="lookup-metric">
+            <div class="lookup-metric-label">Lesson Quiz</div>
+            <div class="lookup-metric-value">${d.lq_rate.toFixed(0)}%</div>
+            <div class="lookup-metric-avg">TB: ${this.fmtAvg(d.lq_avg)}</div>
+          </div>
+        </div>
+        <span class="status-badge" style="background:${rateColor(d.composite)}">${d.status} — Tổng hợp ${d.composite.toFixed(1)}%</span>
+      </div>
+    `).join('') + '</div>';
+
+    // Nếu kết quả chỉ gói gọn trong 1 lớp duy nhất, cho phép xem lưới điểm
+    // chi tiết từng buổi (Lecture) của TOÀN BỘ học viên lớp đó.
+    const uniqueClasses = [...new Set(data.map(d => d.class_name))];
+    if (uniqueClasses.length === 1){
+      const cls = uniqueClasses[0];
+      const branch = data[0].branch;
+      const safeCls = cls.replace(/"/g,'&quot;');
+      const safeBranch = branch.replace(/"/g,'&quot;');
+      html += `<div class="lookup-detail-trigger">
+        <button type="button" class="export-btn" id="lookup-detail-btn" data-class="${safeCls}" data-branch="${safeBranch}">📋 Xem điểm chi tiết từng buổi (Lecture) của lớp ${cls}</button>
+      </div>
+      <div id="lookup-detail-wrap"></div>`;
+    }
+
+    wrap.innerHTML = html;
+
+    const detailBtn = document.getElementById('lookup-detail-btn');
+    if (detailBtn){
+      detailBtn.addEventListener('click', () => {
+        this.fetchAndRenderClassDetail(detailBtn.dataset.class, detailBtn.dataset.branch);
+      });
+    }
+  }
+
+  async fetchAndRenderClassDetail(className, branch){
+    const detailWrap = document.getElementById('lookup-detail-wrap');
+    const btn = document.getElementById('lookup-detail-btn');
+    if (!detailWrap) return;
+    detailWrap.innerHTML = `<div class="lookup-empty">Đang tải điểm chi tiết...</div>`;
+    if (btn) btn.disabled = true;
+
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PASTE_YOUR') === 0){
+      detailWrap.innerHTML = `<div class="lookup-empty">Chưa cấu hình APPS_SCRIPT_URL nên không tải được điểm chi tiết từng buổi.</div>`;
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    try{
+      const url = APPS_SCRIPT_URL + '?type=raw&class=' + encodeURIComponent(className) + '&branch=' + encodeURIComponent(branch);
+      const result = await jsonpFetch(url);
+      if (!result || result.ok === false || !Array.isArray(result.students)){
+        detailWrap.innerHTML = `<div class="lookup-empty">Chưa có dữ liệu chi tiết từng buổi cho lớp này (có thể lớp chưa được cào lần nào, hoặc chưa có điểm).</div>`;
+        if (btn) btn.disabled = false;
+        return;
+      }
+      this.renderClassDetailGrid(detailWrap, result);
+    }catch(err){
+      detailWrap.innerHTML = `<div class="lookup-empty">Lỗi khi tải điểm chi tiết: ${err.message}</div>`;
+    }
+    if (btn) btn.disabled = false;
+  }
+
+  renderClassDetailGrid(container, classData){
+    const students = classData.students || [];
+    if (!students.length){
+      container.innerHTML = `<div class="lookup-empty">Lớp này chưa có học viên nào có điểm.</div>`;
+      return;
+    }
+    // Gom toàn bộ số Lecture xuất hiện ở bất kỳ học viên nào, sắp theo số
+    const lectureSet = new Set();
+    students.forEach(s => Object.keys(s.lectures || {}).forEach(l => lectureSet.add(Number(l))));
+    const lectures = [...lectureSet].sort((a,b) => a-b);
+
+    if (!lectures.length){
+      container.innerHTML = `<div class="lookup-empty">Chưa có dữ liệu buổi học nào cho lớp này.</div>`;
+      return;
+    }
+
+    const activities = [
+      { key: 'Homework', label: 'HW' },
+      { key: 'Book Test', label: 'Test' },
+      { key: 'Lesson Quiz', label: 'Quiz' },
+    ];
+
+    let html = `<div class="detail-grid-title">${classData.program || ''} ${classData.syllabus ? '• ' + classData.syllabus : ''} — ${students.length} học viên, ${lectures.length} buổi có dữ liệu</div>`;
+    html += `<div class="detail-grid-scroll"><table class="detail-grid-table"><thead><tr><th class="dg-sticky">Học viên</th><th class="dg-sticky2">Loại</th>`;
+    lectures.forEach(l => html += `<th>L${l}</th>`);
+    html += `</tr></thead><tbody>`;
+
+    students.sort((a,b) => String(a.name||'').localeCompare(String(b.name||''),'vi'));
+    students.forEach(s => {
+      activities.forEach((act, actIdx) => {
+        html += `<tr>`;
+        if (actIdx === 0){
+          html += `<td class="dg-sticky dg-name" rowspan="3">${s.name || '(chưa có tên)'}${s.student_id ? '<br><span class="dg-id">'+s.student_id+'</span>' : ''}</td>`;
+        }
+        html += `<td class="dg-sticky2 dg-act">${act.label}</td>`;
+        lectures.forEach(l => {
+          const v = s.lectures && s.lectures[l] ? s.lectures[l][act.key] : undefined;
+          const display = (v === undefined) ? '' : (v === null ? '<span class="dg-missing">–</span>' : v);
+          html += `<td class="${v!==undefined && v!==null ? 'dg-has' : ''}">${display}</td>`;
+        });
+        html += `</tr>`;
+      });
+    });
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+  }
+
   renderStudentTable(){
     const data = this.getStudentRows();
     document.getElementById('s-row-count').textContent = `${data.length.toLocaleString('vi-VN')} dòng`;
@@ -845,7 +1074,7 @@ class Dashboard{
     if (!data.length){ alert('Không có dữ liệu để xuất (kiểm tra lại bộ lọc).'); return; }
     const rows = data.map(d => ({
       'Vùng': d.region, 'Chi nhánh': d.branch, 'Program': d.program, 'Syllabus': d.syllabus,
-      'Lớp': d.class_name, 'Tuần': d.week ?? '',
+      'Lớp': d.class_name, 'Lecture': d.week ?? '',
       'HW %': Number(d.hw_rate.toFixed(2)), 'HW Điểm TB': d.hw_avg===null ? '' : Number(d.hw_avg.toFixed(2)),
       'Test %': Number(d.bt_rate.toFixed(2)), 'Test Điểm TB': d.bt_avg===null ? '' : Number(d.bt_avg.toFixed(2)),
       'Quiz %': Number(d.lq_rate.toFixed(2)), 'Quiz Điểm TB': d.lq_avg===null ? '' : Number(d.lq_avg.toFixed(2)),
